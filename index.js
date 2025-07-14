@@ -2,37 +2,57 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import { MEME_TEMPLATES } from "./data";
+import { listMemes, writeTextOnImage } from "./utils";
 
 const server = new McpServer({
-    name: "mcp-weather-server",
+    name: "mcp-meme-generator",
     version: "1.0.0"
 });
 
 
 
-const inputSchema = {
-    city: z.string().describe("The city to get the weather for. Needs to be a big city.")
-};
+const memeGeneratorSchema = z.object({
+  memeName: z.string().describe("The meme name you will use, supported are: " + MEME_TEMPLATES.map(meme => meme.name).join),
+  texts: z.array(z.string().min(1, 'Text cannot be empty')).nonempty({ message: 'texts cannot be empty' }),
+  positions: z.array(z.object({
+      x: z.number(),
+      y: z.number(),
+    })).nonempty({ message: 'positions cannot be empty' }),
 
+  fontSize: z.string().regex(/^\d+$/, { message: 'fontSize must be a numeric string' }).optional()
+}).refine(data => data.texts.length === data.positions.length, {
+  message: 'texts and positions must be of equal length',
+});
 
-async function getWeather({ city }) {
-    const response = await fetch(`https://goweather.xyz/weather/${city.toLowerCase()}`);
-    if (!response.ok) {
-      throw new Error(`Couldn't get weather for ${city}`);
-    }
-  
-    const data = await response.json();
-  
-    return {
-      content: [{ type: "text", text: JSON.stringify(data) }]
-    };
+const listMemesSchema = {
+    limit: z.number().describe("")
 }
 
-server.registerTool("weather", {
-    title: "Weather Tool",
-    description: "Get the weather for a city",
-    inputSchema,
-}, getWeather);
+
+async function GenerateMeme(memeName, texts, positions, fontSize) {
+    const meme = MEME_TEMPLATES.find(meme => meme.name === memeName);
+    if (!meme) {
+        throw new Error(`Meme ${memeName} not found`);
+    }
+  const memeImage = MEME_TEMPLATES.find(meme => meme.name === memeName).imageUrl;
+   const memeUrl = await writeTextOnImage(memeImage, texts, positions, fontSize);
+
+   return memeUrl;
+
+}
+
+server.registerTool("listMemes", {
+    title: "List memes",
+    description: "List all supported memes with resolution and description",
+    listMemesSchema,
+}, listMemes);
+
+server.registerTool("GenerateMeme", {
+  title: "Create a meme",
+  description: "Create a meme by entering the name of it and the texts followed by the positions of the text",
+  memeGeneratorSchema,
+}, GenerateMeme);
 
 
 const transport = new StdioServerTransport();
