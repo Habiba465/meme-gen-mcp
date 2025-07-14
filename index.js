@@ -12,7 +12,7 @@ const server = new McpServer({
 
 
 
-const memeGeneratorSchema = z.object({
+const memeGeneratorSchema = {
     memeName: z.string().describe("The meme name you will use, supported are: " + MEME_TEMPLATES.map(meme => meme.name).join(', ')), 
   texts: z.array(z.string().min(1, 'Text cannot be empty')).nonempty({ message: 'texts cannot be empty' }),
   positions: z.array(z.object({
@@ -21,20 +21,25 @@ const memeGeneratorSchema = z.object({
     })).nonempty({ message: 'positions cannot be empty' }),
 
   fontSize: z.string().regex(/^\d+$/, { message: 'fontSize must be a numeric string' }).optional()
-}).refine(data => data.texts.length === data.positions.length, {
-  message: 'texts and positions must be of equal length',
-});
+}
 
-const listMemesSchema = z.object({
+const listMemesSchema = {
   limit: z.number().optional().describe("The maximum number of memes to return.")
-});
+}
 
-async function GenerateMeme(memeName, texts, positions, fontSize) {
+function getMemeUrlByName(memeName) {
     const meme = MEME_TEMPLATES.find(meme => meme.name === memeName);
     if (!meme) {
-        throw new Error(`Meme ${memeName} not found`);
+        throw new Error(`Meme "${memeName}" not found.`);
     }
-  const memeImage = MEME_TEMPLATES.find(meme => meme.name === memeName).imageUrl;
+    return meme.imageUrl;
+}
+
+
+async function GenerateMeme(memeName, texts, positions, fontSize) {
+    const memeImage = getMemeUrlByName(memeName);
+    
+
    const memeUrl = await writeTextOnImage(memeImage, texts, positions, fontSize);
 
    return memeUrl;
