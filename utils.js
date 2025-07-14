@@ -1,71 +1,50 @@
-import Jimp, { read, loadFont } from 'jimp';
+import sharp from 'sharp';
 import axios from 'axios';
 import fs from 'fs/promises';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
-import { MEME_TEMPLATES } from './data';
+import downloadsFolder from 'downloads-folder';
+import { MEME_TEMPLATES } from './data.js';
 
-
-export async function writeTextOnImage(imageUrl, texts, positions, fontSize = '16') {
+export async function writeTextOnImage(imageUrl, texts, positions, fontSize = 32) {
   try {
-    const fontKey = `FONT_SANS_${fontSize}_BLACK`;
-    const fontPath = Jimp[fontKey];
-
     const response = await axios.get(imageUrl, { responseType: 'arraybuffer' });
-    const tempFileName = `./temp-${uuidv4()}.jpg`;
-    await fs.writeFile(tempFileName, response.data);
+    const imageBuffer = response.data;
 
-    const [image, font] = await Promise.all([
-      Jimp.read(tempFileName),
-      Jimp.loadFont(fontPath),
-    ]);
+    const image = sharp(imageBuffer);
+    const metadata = await image.metadata();
 
-    for (let i = 0; i < texts.length; i++) {
+    const compositeElements = texts.map((text, i) => {
       const { x, y } = positions[i];
-      const text = texts[i];
-      image.print(font, x, y, text);
-    }
-
-    const outputFile = `./output-${uuidv4()}.jpg`;
-    await image.writeAsync(outputFile);
-
-    const uploadedUrl = await uploadToHackClubCDN(`file://${path.resolve(outputFile)}`);
-
-    await fs.unlink(tempFileName);
-    await fs.unlink(outputFile);
-
-    return uploadedUrl;
-  } catch (err) {
-    console.error('Error editing or uploading image:', err);
-    throw err;
-  }
-}
-
-const CDN_ENDPOINT = 'https://cdn.hackclub.com/api/v3/new';
-
-
-export const uploadToHackClubCDN = async (url) => {
-  if (!url || typeof url !== 'string') {
-    throw new Error('You must provide a valid image URL.');
-  }
-
-
-  try {
-    const response = await axios.post(CDN_ENDPOINT, [url], {
-      headers: {
-        Authorization: `Bearer beans`,
-        'Content-Type': 'application/json'
-      }
+      const svg = `
+        <svg width="${metadata.width}" height="${metadata.height}">
+          <style>
+            .title { fill: #000; font-size: ${fontSize}px; font-family: Arial, sans-serif; }
+          </style>
+          <text x="${x}" y="${y}" class="title">${text}</text>
+        </svg>
+      `;
+      return { input: Buffer.from(svg), top: 0, left: 0 };
     });
 
-    return response.data[0]; 
+    const downloadsPath = downloadsFolder();
+    if (!downloadsPath) {
+      throw new Error('Could not find the downloads folder.');
+    }
+    const outputFileName = `output-${uuidv4()}.png`;
+    const outputPath = path.join(downloadsPath, outputFileName);
+
+    await image.composite(compositeElements).toFile(outputPath);
+
+    return outputPath;
   } catch (err) {
-    console.error('CDN Upload failed:', err.response?.data || err.message);
+    console.error('Error editing or saving image:', err);
     throw err;
   }
-};
-
-export function listMemes(limit) {
-  return MEME_TEMPLATES;  
 }
 
+export function listMemes(limit) {
+  return  {
+    content: [{ type: "Meme Templates", text: JSON.stringify(MEME_TEMPLATES) }]
+  };;
+}

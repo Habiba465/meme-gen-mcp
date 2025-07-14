@@ -2,8 +2,8 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { MEME_TEMPLATES } from "./data";
-import { listMemes, writeTextOnImage } from "./utils";
+import { MEME_TEMPLATES } from "./data.js";
+import { listMemes, writeTextOnImage } from "./utils.js";
 
 const server = new McpServer({
     name: "mcp-meme-generator",
@@ -13,7 +13,7 @@ const server = new McpServer({
 
 
 const memeGeneratorSchema = z.object({
-  memeName: z.string().describe("The meme name you will use, supported are: " + MEME_TEMPLATES.map(meme => meme.name).join),
+    memeName: z.string().describe("The meme name you will use, supported are: " + MEME_TEMPLATES.map(meme => meme.name).join(', ')), 
   texts: z.array(z.string().min(1, 'Text cannot be empty')).nonempty({ message: 'texts cannot be empty' }),
   positions: z.array(z.object({
       x: z.number(),
@@ -25,10 +25,9 @@ const memeGeneratorSchema = z.object({
   message: 'texts and positions must be of equal length',
 });
 
-const listMemesSchema = {
-    limit: z.number().describe("")
-}
-
+const listMemesSchema = z.object({
+  limit: z.number().optional().describe("The maximum number of memes to return.")
+});
 
 async function GenerateMeme(memeName, texts, positions, fontSize) {
     const meme = MEME_TEMPLATES.find(meme => meme.name === memeName);
@@ -45,16 +44,15 @@ async function GenerateMeme(memeName, texts, positions, fontSize) {
 server.registerTool("listMemes", {
     title: "List memes",
     description: "List all supported memes with resolution and description",
-    listMemesSchema,
+    inputSchema: listMemesSchema, 
 }, listMemes);
 
 server.registerTool("GenerateMeme", {
   title: "Create a meme",
   description: "Create a meme by entering the name of it and the texts followed by the positions of the text",
-  memeGeneratorSchema,
+  inputSchema: memeGeneratorSchema,
 }, GenerateMeme);
 
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
-
